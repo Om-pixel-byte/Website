@@ -34,7 +34,7 @@ import { verifyGSTIN } from './src/server/gst-service.ts';
 import { sendOrderConfirmationEmail, getEmailConnectivityStatus, sendTestEmail, updateEmailSettings } from './src/server/email-service.ts';
 import { adminAuth } from './src/lib/firebase-admin.ts';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const app = express();
 
@@ -1575,16 +1575,28 @@ async function startServer() {
   const httpServer = http.createServer(app);
 
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
+    const vitePromise = createViteServer({
       server: {
         middlewareMode: true,
-        hmr: {
-          server: httpServer,
-        },
+        hmr: false,
+        watch: null,
       },
       appType: 'spa',
     });
-    app.use(vite.middlewares);
+
+    vitePromise.catch((err) => {
+      console.error('Vite middleware initialization failed:', err);
+      process.exit(1);
+    });
+
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
+    });
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath));
